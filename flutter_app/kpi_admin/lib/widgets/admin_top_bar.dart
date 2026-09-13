@@ -66,33 +66,34 @@ class AdminTopBar extends StatelessWidget {
   }
 
   Future<void> _selectStation(BuildContext context, String value) async {
+    final t = AppLocalizations.of(context);
     if (value == '__add__') {
       final ctrl = TextEditingController();
       final code = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Station hinzufügen'),
+          title: Text(t.t('admin_station_add')),
           content: TextField(
             controller: ctrl,
             autofocus: true,
             textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(
-              labelText: 'Stationscode',
-              hintText: 'z. B. DBY5',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: t.t('admin_station_code'),
+              hintText: t.t('admin_station_code_hint'),
+              border: const OutlineInputBorder(),
             ),
             onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Abbrechen'),
+              child: Text(t.t('admin_home_cancel')),
             ),
             FilledButton(
               style:
                   FilledButton.styleFrom(backgroundColor: AppColors.codriverGreen),
               onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
-              child: const Text('Hinzufügen'),
+              child: Text(t.t('button_add')),
             ),
           ],
         ),
@@ -153,6 +154,7 @@ class AdminTopBar extends StatelessWidget {
   }
 
   Widget _buildRow(BuildContext context, String company, String station) {
+    final t = AppLocalizations.of(context);
     // Stack instead of a flex Row so the icon group is PINNED to the right
     // edge no matter what the left side measures.
     return Stack(
@@ -178,7 +180,7 @@ class AdminTopBar extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           PopupMenuButton<String>(
-            tooltip: 'Station wählen',
+            tooltip: t.t('admin_station_select'),
             onSelected: (v) => _selectStation(context, v),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -203,14 +205,14 @@ class AdminTopBar extends StatelessWidget {
                     ],
                   ),
                 ),
-              const PopupMenuItem<String>(
+              PopupMenuItem<String>(
                 value: '__add__',
                 child: Row(
                   children: [
-                    Icon(Icons.add_rounded,
+                    const Icon(Icons.add_rounded,
                         size: 16, color: Color(0xFF1D7F5A)),
-                    SizedBox(width: 8),
-                    Text('Station hinzufügen…'),
+                    const SizedBox(width: 8),
+                    Text('${t.t('admin_station_add')}…'),
                   ],
                 ),
               ),
@@ -447,12 +449,13 @@ class _QuickNotesDialog extends StatelessWidget {
   final DocumentReference<Map<String, dynamic>> userRef;
 
   Future<void> _addNote(BuildContext context) async {
+    final t = AppLocalizations.of(context);
     final labelCtrl = TextEditingController();
     final valueCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Notiz hinzufügen'),
+        title: Text(t.t('admin_note_add')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -502,6 +505,7 @@ class _QuickNotesDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     return Dialog(
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -629,7 +633,7 @@ class _QuickNotesDialog extends StatelessWidget {
                                     size: 16, color: Color(0xFF9CA3AF)),
                                 const SizedBox(width: 6),
                                 IconButton(
-                                  tooltip: 'Löschen',
+                                  tooltip: t.t('admin_note_delete'),
                                   icon: const Icon(
                                       Icons.delete_outline_rounded,
                                       size: 18,
@@ -664,7 +668,7 @@ class _QuickNotesDialog extends StatelessWidget {
                   ),
                   onPressed: () => _addNote(context),
                   icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Notiz hinzufügen'),
+                  label: Text(t.t('admin_note_add')),
                 ),
               ),
             ],

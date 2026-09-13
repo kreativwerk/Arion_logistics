@@ -209,6 +209,14 @@ class AppLocalizations {
       'admin_home_body': 'Body',
       'admin_home_cancel': 'Cancel',
       'admin_home_save': 'Save',
+
+      // admin top bar / station switcher
+      'admin_station_add': 'Add station',
+      'admin_station_code': 'Station code',
+      'admin_station_code_hint': 'e.g. DBY5',
+      'admin_station_select': 'Select station',
+      'admin_note_add': 'Add note',
+      'admin_note_delete': 'Delete',
       'admin_home_title_or_body_required': 'Title or body is required.',
       'admin_home_notification_not_found': 'Notification not found.',
       'admin_home_rule_updated_for_drivers':
@@ -1127,6 +1135,14 @@ class AppLocalizations {
       'admin_home_title': 'Titel',
       'admin_home_body': 'Inhalt',
       'admin_home_cancel': 'Abbrechen',
+
+      // admin top bar / station switcher
+      'admin_station_add': 'Station hinzufügen',
+      'admin_station_code': 'Stationscode',
+      'admin_station_code_hint': 'z. B. DBY5',
+      'admin_station_select': 'Station wählen',
+      'admin_note_add': 'Notiz hinzufügen',
+      'admin_note_delete': 'Löschen',
       'admin_home_save': 'Speichern',
       'admin_home_title_or_body_required':
           'Titel oder Inhalt ist erforderlich.',
