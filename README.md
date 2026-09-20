@@ -54,6 +54,29 @@ npm install
 npm run build
 ```
 
+## Vom Handy aus entwickeln (Claude Code Web → Rechner)
+
+Änderungen werden in Claude Code (Web/App) beschrieben, Claude committet und pusht sie auf
+den Branch `claude/mobile-app-sync-b6d675`. Auf dem Rechner zieht ein Sync-Skript den Branch
+automatisch und löst in der laufenden App ein Hot Reload aus.
+
+Einmalig auf dem Rechner, zwei Terminals:
+
+```sh
+# Terminal 1: App mit PID-Datei starten (nötig für automatisches Hot Reload)
+cd flutter_app/kpi_admin
+flutter run -d chrome --pid-file /tmp/codriver_flutter.pid
+
+# Terminal 2: Sync-Schleife starten (macOS/Linux)
+scripts/sync-from-phone.sh
+```
+
+Windows (PowerShell): `.\scripts\sync-from-phone.ps1`, nach jedem Pull im Flutter-Terminal `r` drücken.
+
+Parameter: `scripts/sync-from-phone.sh <branch> <intervall-sekunden>` (Standard: obiger Branch, 20 s).
+Das Skript macht nur Fast-Forward-Pulls. Lokale Änderungen vorher committen, sonst wird der
+Branch-Wechsel verweigert. Ist der Branch in `main` gemerged, das Skript mit dem neuen Claude-Branch starten.
+
 ## Notes
 
 - The parser service ingests DSP scorecard and POD quality PDFs and writes structured data for the app to consume.
