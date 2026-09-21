@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart' as fb;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../widgets/web_preview.dart'
     if (dart.library.html) '../widgets/web_preview_web.dart';
@@ -415,6 +416,66 @@ class _FeedbackPageState extends State<FeedbackPage> {
       ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  String _ticketsAsText(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final buf = StringBuffer();
+    var n = 0;
+    for (final d in docs) {
+      final m = d.data();
+      n++;
+      final title = (m['title'] ?? m['subject'] ?? '').toString().trim();
+      final desc = (m['description'] ?? m['message'] ?? '').toString().trim();
+      final who = (m['createdByEmail'] ?? m['createdByUid'] ?? '')
+          .toString()
+          .trim();
+      final role = (m['createdByRole'] ?? '').toString().trim();
+      final priority = (m['priority'] ?? '').toString().trim().toUpperCase();
+      final status = (m['status'] ?? 'open').toString().trim().toUpperCase();
+      final created = _fmtTimestamp(context, m['createdAt']);
+      final hasImage = (m['attachmentUrl'] ?? '').toString().trim().isNotEmpty;
+
+      buf.writeln('## $n. ${title.isEmpty ? '(ohne Titel)' : title}');
+      buf.writeln(
+        '- ID: ${d.id} | $status | $priority | $created'
+        '${who.isEmpty ? '' : ' | $who'}'
+        '${role.isEmpty ? '' : ' ($role)'}'
+        '${hasImage ? ' | Bild vorhanden' : ''}',
+      );
+      if (desc.isNotEmpty) {
+        buf.writeln();
+        buf.writeln(desc);
+      }
+      buf.writeln();
+    }
+    return buf.toString().trimRight();
+  }
+
+  Future<void> _copyTickets(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    if (docs.isEmpty) return;
+    try {
+      await Clipboard.setData(ClipboardData(text: _ticketsAsText(docs)));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              '${docs.length} tickets copied to clipboard.',
+              '${docs.length} Tickets in die Zwischenablage kopiert.',
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Copy failed: $e')));
     }
   }
 
@@ -884,6 +945,10 @@ class _FeedbackPageState extends State<FeedbackPage> {
                                     setState(() => _devStatus = v),
                                 onPriorityChanged: (v) =>
                                     setState(() => _devPriority = v),
+                                onCopy: filtered.isEmpty
+                                    ? null
+                                    : () => _copyTickets(filtered),
+                                copyCount: filtered.length,
                                 t: _t,
                               ),
                               const SizedBox(height: 12),
@@ -1256,6 +1321,8 @@ class _DevFiltersCard extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<_DevStatusFilter> onStatusChanged;
   final ValueChanged<String> onPriorityChanged;
+  final VoidCallback? onCopy;
+  final int copyCount;
   final String Function(String en, String de) t;
 
   const _DevFiltersCard({
@@ -1268,6 +1335,8 @@ class _DevFiltersCard extends StatelessWidget {
     required this.onSearchChanged,
     required this.onStatusChanged,
     required this.onPriorityChanged,
+    required this.onCopy,
+    required this.copyCount,
     required this.t,
   });
 
@@ -1319,6 +1388,30 @@ class _DevFiltersCard extends StatelessWidget {
               ),
               _metaChip(
                 label: '${t('Resolved (7d)', 'Erledigt (7T)')}: $resolvedCount',
+              ),
+              TextButton.icon(
+                onPressed: onCopy,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF1D7F5A),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                    side: const BorderSide(color: Color(0xFFBBF7D0)),
+                  ),
+                ),
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: Text(
+                  '${t('Copy tickets', 'Tickets kopieren')} ($copyCount)',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ],
           ),
