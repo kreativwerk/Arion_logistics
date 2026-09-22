@@ -21,6 +21,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _devSearchCtrl = TextEditingController();
+  final _replyCtrl = TextEditingController();
 
   bool _submitting = false;
   Uint8List? _attachmentBytes;
@@ -50,6 +51,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
     _titleCtrl.dispose();
     _descCtrl.dispose();
     _devSearchCtrl.dispose();
+    _replyCtrl.dispose();
     super.dispose();
   }
 
@@ -352,6 +354,77 @@ class _FeedbackPageState extends State<FeedbackPage> {
     }
   }
 
+  Future<void> _editReply({
+    required String feedbackId,
+    required String currentReply,
+  }) async {
+    if (_submitting) return;
+    final ctrl = _replyCtrl..text = currentReply;
+    final text = await showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            currentReply.isEmpty
+                ? _t('Write reply', 'Antwort schreiben')
+                : _t('Edit reply', 'Antwort bearbeiten'),
+          ),
+          content: SizedBox(
+            width: 480,
+            child: TextField(
+              controller: ctrl,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              maxLength: 600,
+              decoration: _inputDeco(
+                label: _t('Reply', 'Antwort'),
+                hint: _t(
+                  'Short and simple, e.g. "Fixed. Please restart the app."',
+                  'Kurz und einfach, z. B. "Ist behoben. Bitte App neu starten."',
+                ),
+                alignLabelWithHint: true,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(_t('Cancel', 'Abbrechen')),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _kPrimary),
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+              child: Text(_t('Save', 'Speichern')),
+            ),
+          ],
+        );
+      },
+    );
+    if (text == null) return;
+
+    final uid = _uid;
+    if (uid == null) return;
+    final trimmed = text.trim();
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedback')
+          .doc(feedbackId)
+          .set({
+            'reply': trimmed,
+            'repliedAt': trimmed.isEmpty ? null : FieldValue.serverTimestamp(),
+            'repliedBy': trimmed.isEmpty ? null : uid,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not save reply: $e')));
+    }
+  }
+
   Future<void> _deleteFeedback({required String feedbackId}) async {
     if (_submitting) return;
 
@@ -448,6 +521,11 @@ class _FeedbackPageState extends State<FeedbackPage> {
       if (desc.isNotEmpty) {
         buf.writeln();
         buf.writeln(desc);
+      }
+      final reply = (m['reply'] ?? '').toString().trim();
+      if (reply.isNotEmpty) {
+        buf.writeln();
+        buf.writeln('> Antwort: $reply');
       }
       buf.writeln();
     }
@@ -1001,6 +1079,13 @@ class _FeedbackPageState extends State<FeedbackPage> {
                                             .trim();
                                     final canDelete =
                                         isDeveloper || createdByUid == uid;
+                                    final reply = (data['reply'] ?? '')
+                                        .toString()
+                                        .trim();
+                                    final repliedAt = _fmtTimestamp(
+                                      context,
+                                      data['repliedAt'],
+                                    );
 
                                     return Container(
                                       margin: const EdgeInsets.only(bottom: 10),
@@ -1065,6 +1150,13 @@ class _FeedbackPageState extends State<FeedbackPage> {
                                                       resolved: false,
                                                     );
                                                   }
+                                                  if (v == 'reply' &&
+                                                      isStaff) {
+                                                    _editReply(
+                                                      feedbackId: d.id,
+                                                      currentReply: reply,
+                                                    );
+                                                  }
                                                   if (v == 'delete') {
                                                     _deleteFeedback(
                                                       feedbackId: d.id,
@@ -1072,6 +1164,21 @@ class _FeedbackPageState extends State<FeedbackPage> {
                                                   }
                                                 },
                                                 itemBuilder: (_) => [
+                                                  if (isStaff)
+                                                    PopupMenuItem<String>(
+                                                      value: 'reply',
+                                                      child: Text(
+                                                        reply.isEmpty
+                                                            ? _t(
+                                                                'Write reply',
+                                                                'Antwort schreiben',
+                                                              )
+                                                            : _t(
+                                                                'Edit reply',
+                                                                'Antwort bearbeiten',
+                                                              ),
+                                                      ),
+                                                    ),
                                                   if (isStaff && !isResolved)
                                                     PopupMenuItem<String>(
                                                       value: 'resolve',
@@ -1124,6 +1231,17 @@ class _FeedbackPageState extends State<FeedbackPage> {
                                                     height: 1.35,
                                                   ),
                                                 ),
+                                              if (reply.isNotEmpty) ...[
+                                                const SizedBox(height: 10),
+                                                _ReplyBox(
+                                                  reply: reply,
+                                                  repliedAt: repliedAt,
+                                                  label: _t(
+                                                    'Reply from the team',
+                                                    'Antwort vom Team',
+                                                  ),
+                                                ),
+                                              ],
                                               if (attachmentUrl.isNotEmpty) ...[
                                                 const SizedBox(height: 10),
                                                 Wrap(
@@ -1224,6 +1342,74 @@ class _metaChip extends StatelessWidget {
           color: Color(0xFF4B5563),
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+class _ReplyBox extends StatelessWidget {
+  final String reply;
+  final String repliedAt;
+  final String label;
+  const _ReplyBox({
+    required this.reply,
+    required this.repliedAt,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE6F8F2),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFB8EBD8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.reply_rounded,
+                size: 16,
+                color: Color(0xFF006047),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF006047),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              if (repliedAt != '—')
+                Text(
+                  repliedAt,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4B5563),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            reply,
+            style: const TextStyle(
+              color: Color(0xFF1F2937),
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+        ],
       ),
     );
   }

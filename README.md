@@ -77,6 +77,41 @@ Parameter: `scripts/sync-from-phone.sh <branch> <intervall-sekunden>` (Standard:
 Das Skript macht nur Fast-Forward-Pulls. Lokale Änderungen vorher committen, sonst wird der
 Branch-Wechsel verweigert. Ist der Branch in `main` gemerged, das Skript mit dem neuen Claude-Branch starten.
 
+## Feedback-Tickets automatisch beantworten (Claude-Routine)
+
+Neue Feedback-Tickets werden stündlich von einer Claude-Code-Routine gelesen, wenn möglich
+umgesetzt (Push auf den Claude-Branch) und mit einer kurzen Antwort in einfacher Sprache
+versehen. Die Antwort erscheint in der App auf der Feedback-Seite unter dem Ticket
+("Antwort vom Team"). Entwickler können Antworten dort auch selbst schreiben oder ändern.
+
+Technik: zwei HTTPS-Functions (`feedbackAgentList`, `feedbackAgentReply`), geschützt durch
+einen geheimen Schlüssel im Header `x-agent-key`. Der Antwort-Endpunkt kann nur den
+Antworttext und den Status (offen/erledigt) eines Tickets setzen.
+
+Einmalige Einrichtung:
+
+```sh
+# 1. Schlüssel erzeugen (mind. 32 Zeichen) und als Secret hinterlegen
+openssl rand -hex 32
+cd firebase
+firebase functions:secrets:set FEEDBACK_AGENT_KEY      # Wert einfügen
+
+# 2. Functions bauen und deployen
+cd functions && npm install && npm run build && cd ..
+firebase deploy --only functions:feedbackAgentList,functions:feedbackAgentReply
+```
+
+3. Denselben Schlüssel in der Claude-Code-Umgebung als Umgebungsvariable `FEEDBACK_AGENT_KEY`
+   eintragen (claude.ai/code → Environments → Umgebung bearbeiten → Environment variables).
+
+Die Routine ruft dann `https://us-central1-gaurav-arion-001-3d94a.cloudfunctions.net/feedbackAgentList`
+auf. Ohne gesetzte Variable beendet sich die Routine ohne Aktion. Manuell testen:
+
+```sh
+curl -H "x-agent-key: $FEEDBACK_AGENT_KEY" \
+  https://us-central1-gaurav-arion-001-3d94a.cloudfunctions.net/feedbackAgentList
+```
+
 ## Notes
 
 - The parser service ingests DSP scorecard and POD quality PDFs and writes structured data for the app to consume.

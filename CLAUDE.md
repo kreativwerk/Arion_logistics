@@ -29,6 +29,7 @@ npx skills add https://github.com/vercel-labs/agent-skills --skill web-design-gu
 - Bei jeder Änderung an Flutter-Widgets, Screens, Animationen, Firebase-Logik, Auth-Flows, Hosting-Deployments oder visuellem Design die oben genannten Skills heranziehen, **bevor** Code geschrieben wird.
 - Wenn ein Skill Best-Practices oder Patterns vorgibt, diese übernehmen statt eigene Lösungen zu erfinden.
 - Breakpoints, Responsive-Strategie, Animation-Kurven und Firebase-Patterns konsistent mit den Skill-Empfehlungen halten.
+- **Vor jedem Commit** einen Qualitätscheck und Code-Review durchführen: den Skill `gstack` verwenden, sobald er in der Umgebung installiert ist, bis dahin den eingebauten `code-review`-Skill. Gefundene Probleme vor dem Push beheben.
 
 ## Projektstruktur
 

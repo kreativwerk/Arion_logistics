@@ -4,12 +4,13 @@
 
 // Minimal Firebase Functions file just for driver sub-accounts + notifications
 
-import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {onCall, onRequest, HttpsError} from "firebase-functions/v2/https";
+import {defineSecret} from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import * as https from "node:https";
 
 import {initializeApp} from "firebase-admin/app";
-import {getFirestore, FieldValue} from "firebase-admin/firestore";
+import {getFirestore, FieldValue, DocumentSnapshot} from "firebase-admin/firestore";
 import { getAuth, UserRecord } from "firebase-admin/auth";
 import {getStorage} from "firebase-admin/storage";
 
@@ -1678,6 +1679,196 @@ export const purgeSoftDeletedVehicles = onSchedule(
           `${totalDocumentsDeleted} vehicle documents, ${totalEventsDeleted} vehicle events ` +
           `older than ${cutoff.toISOString()}; storage delete failures=${totalStorageDeleteFailures}`,
       );
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Feedback agent bridge
+// ---------------------------------------------------------------------------
+// Two small HTTPS endpoints that let the automated assistant (Claude Code
+// routine) read open feedback tickets and post a short reply. They are
+// protected by a shared secret sent in the "x-agent-key" header; the secret
+// lives in Secret Manager (firebase functions:secrets:set FEEDBACK_AGENT_KEY).
+// The reply endpoint can only write the reply text and the open/resolved
+// status of a single ticket; it cannot read or change anything else.
+
+const FEEDBACK_AGENT_KEY = defineSecret("FEEDBACK_AGENT_KEY");
+
+type FeedbackReplyBody = {
+  feedbackId?: string;
+  reply?: string;
+  status?: string; // open | resolved
+};
+
+/**
+ * Constant-time comparison of the presented agent key with the secret.
+ * @param {unknown} presented value of the x-agent-key header
+ * @return {boolean} whether the key is valid
+ */
+function agentKeyIsValid(presented: unknown): boolean {
+  const expected = (FEEDBACK_AGENT_KEY.value() || "").trim();
+  const given = typeof presented === "string" ? presented.trim() : "";
+  if (expected.length < 32 || !given || expected.length !== given.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < expected.length; i += 1) {
+    diff |= expected.charCodeAt(i) ^ given.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * Serializes a feedback document for the agent endpoints.
+ * @param {DocumentSnapshot} doc feedback document
+ * @return {Record<string, unknown>} plain JSON row
+ */
+function feedbackRow(doc: DocumentSnapshot): Record<string, unknown> {
+  const m = (doc.data() || {}) as Record<string, unknown>;
+  const ts = (v: unknown): string | null =>
+    v && typeof (v as {toDate?: unknown}).toDate === "function" ?
+      (v as {toDate: () => Date}).toDate().toISOString() :
+      null;
+  return {
+    id: doc.id,
+    title: (m.title || m.subject || "").toString(),
+    description: (m.description || m.message || "").toString(),
+    priority: (m.priority || "").toString(),
+    status: (m.status || "open").toString(),
+    createdByRole: (m.createdByRole || "").toString(),
+    platform: (m.platform || "").toString(),
+    hasAttachment: !!(m.attachmentUrl || "").toString().trim(),
+    createdAt: ts(m.createdAt),
+    reply: (m.reply || "").toString(),
+    repliedAt: ts(m.repliedAt),
+    agentHandledAt: ts(m.agentHandledAt),
+  };
+}
+
+/**
+ * GET: lists open feedback tickets that have not been handled by the agent yet.
+ * Query "all=1" returns all open tickets (handled or not), max 100 rows.
+ */
+export const feedbackAgentList = onRequest(
+  {region: "us-central1", secrets: [FEEDBACK_AGENT_KEY], memory: "256MiB"},
+  async (req, res) => {
+    if (req.method !== "GET") {
+      res.status(405).json({error: "GET only"});
+      return;
+    }
+    if (!agentKeyIsValid(req.get("x-agent-key"))) {
+      res.status(401).json({error: "unauthorized"});
+      return;
+    }
+
+    const includeHandled = (req.query.all || "").toString() === "1";
+    try {
+      const snap = await db
+        .collection("feedback")
+        .where("status", "==", "open")
+        .orderBy("createdAt", "desc")
+        .limit(100)
+        .get();
+
+      // A ticket counts as handled once the agent processed it or a human
+      // already wrote a reply in the app.
+      const rows = snap.docs
+        .filter((d) => {
+          if (includeHandled) return true;
+          const m = (d.data() || {}) as Record<string, unknown>;
+          return !m.agentHandledAt && !(m.reply || "").toString().trim();
+        })
+        .map(feedbackRow);
+
+      res.json({count: rows.length, tickets: rows});
+    } catch (err) {
+      logger.error("feedbackAgentList failed", err);
+      res.status(500).json({error: "internal"});
+    }
+  },
+);
+
+/**
+ * POST: stores a short reply on a feedback ticket and marks it as handled.
+ * Body: {feedbackId, reply, status?}. status may be "open" or "resolved".
+ */
+export const feedbackAgentReply = onRequest(
+  {region: "us-central1", secrets: [FEEDBACK_AGENT_KEY], memory: "256MiB"},
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({error: "POST only"});
+      return;
+    }
+    if (!agentKeyIsValid(req.get("x-agent-key"))) {
+      res.status(401).json({error: "unauthorized"});
+      return;
+    }
+
+    const body = (req.body || {}) as FeedbackReplyBody;
+    const feedbackId = (body.feedbackId || "").toString().trim();
+    const reply = (body.reply || "").toString().trim();
+    const status = (body.status || "").toString().trim().toLowerCase();
+
+    if (!feedbackId) {
+      res.status(400).json({error: "feedbackId is required"});
+      return;
+    }
+    if (!reply) {
+      res.status(400).json({error: "reply is required"});
+      return;
+    }
+    if (reply.length > 600) {
+      res.status(400).json({error: "reply must be 600 characters or less"});
+      return;
+    }
+    if (status && status !== "open" && status !== "resolved") {
+      res.status(400).json({error: "status must be open or resolved"});
+      return;
+    }
+
+    try {
+      const ref = db.collection("feedback").doc(feedbackId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        res.status(404).json({error: "feedback not found"});
+        return;
+      }
+
+      // Never overwrite a reply a human wrote in the app.
+      const existing = (snap.data() || {}) as Record<string, unknown>;
+      const existingReply = (existing.reply || "").toString().trim();
+      const repliedBy = (existing.repliedBy || "").toString();
+      if (existingReply && repliedBy && repliedBy !== "claude") {
+        res.status(409).json({error: "ticket already answered by a person"});
+        return;
+      }
+
+      const update: Record<string, unknown> = {
+        reply,
+        repliedAt: FieldValue.serverTimestamp(),
+        repliedBy: "claude",
+        agentHandledAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (status === "resolved") {
+        update.status = "resolved";
+        update.resolvedAt = FieldValue.serverTimestamp();
+        update.resolvedByUid = "claude";
+      } else if (status === "open") {
+        update.status = "open";
+        update.resolvedAt = null;
+        update.resolvedByUid = null;
+      }
+
+      await ref.set(update, {merge: true});
+      logger.info(`feedbackAgentReply: replied to ${feedbackId} (status=${status || "unchanged"})`);
+
+      const fresh = await ref.get();
+      res.json({ok: true, ticket: feedbackRow(fresh)});
+    } catch (err) {
+      logger.error("feedbackAgentReply failed", err);
+      res.status(500).json({error: "internal"});
     }
   },
 );
