@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import 'firebase_options.dart';
 import 'widgets/auth_gate.dart';
+import 'widgets/codriver_splash.dart';
 import 'Screens/login_page.dart';
 import 'Screens/signup_page.dart';
 import 'Screens/verify_email_page.dart';
@@ -119,7 +120,7 @@ class App extends StatelessWidget {
             ),
           ),
 
-          home: _wrapSelectable(const AuthGate()),
+          home: CodriverSplash(child: _wrapSelectable(const AuthGate())),
           routes: {
             '/login': (_) => _wrapSelectable(const LoginPage()),
             '/signup': (_) => _wrapSelectable(const SignupPage()),
