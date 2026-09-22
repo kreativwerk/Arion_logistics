@@ -104,6 +104,9 @@ firebase deploy --only functions:feedbackAgentList,functions:feedbackAgentReply
 3. Denselben Schlüssel in der Claude-Code-Umgebung als Umgebungsvariable `FEEDBACK_AGENT_KEY`
    eintragen (claude.ai/code → Environments → Umgebung bearbeiten → Environment variables).
 
+4. Die Routine in claude.ai/code anlegen; Name, Zeitplan und vollständiger Prompt stehen in
+   `docs/feedback_routine_prompt.md`.
+
 Die Routine ruft dann `https://us-central1-gaurav-arion-001-3d94a.cloudfunctions.net/feedbackAgentList`
 auf. Ohne gesetzte Variable beendet sich die Routine ohne Aktion. Manuell testen:
 
